@@ -88,6 +88,7 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         titleLabel.stringValue = "Finding passkeys…"
         detailLabel.stringValue = requestParameters.relyingPartyIdentifier
         actionButton.isEnabled = false
+        actionButton.isHidden = true
 
         Task { @MainActor [weak self] in
             do {
@@ -124,6 +125,7 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
                     self.actionButton.title = "Sign in"
                     self.actionButton.action = #selector(self.approve)
                     self.actionButton.isEnabled = true
+                    self.actionButton.isHidden = false
                 }
             } catch {
                 self?.fail(error.localizedDescription)
@@ -147,14 +149,15 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         accountPicker.isHidden = true
         let identity = request.credentialIdentity as? ASPasskeyCredentialIdentity
         let site = identity?.relyingPartyIdentifier ?? "this website"
-        titleLabel.stringValue = registering ? "Create passkey for \(site)?" : "Sign in to \(site)?"
+        titleLabel.stringValue = registering ? "Create passkey for \(site)" : "Sign in to \(site)"
         detailLabel.stringValue = registering
-            ? "This prototype creates a key protected by this Mac's Secure Enclave. Account: \(identity?.userName ?? "unknown")"
+            ? "Account: \(identity?.userName ?? "unknown")\nConfirm with Touch ID or your Mac password."
             : "Confirm with Touch ID or your Mac password."
         actionButton.title = registering ? "Create passkey" : "Sign in"
         actionButton.isEnabled = true
         actionButton.action = #selector(approve)
-        shouldAuthenticateOnAppearance = !registering
+        actionButton.isHidden = true
+        shouldAuthenticateOnAppearance = true
         if view.window != nil {
             authenticateIfReady()
         }
@@ -264,6 +267,7 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         actionButton.title = "Close"
         actionButton.action = #selector(closeFailure)
         actionButton.isEnabled = true
+        actionButton.isHidden = false
     }
 
     @objc private func closeFailure() {
