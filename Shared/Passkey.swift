@@ -25,6 +25,22 @@ enum PasskeyError: LocalizedError {
 /// New keys are generated and used inside the Secure Enclave. The Keychain
 /// stores an encrypted representation usable only by this device's enclave.
 enum Passkey {
+    // UP, UV, BE, BS, AT. Clearing the backup flags causes macOS to reject
+    // registration with "AuthData is missing a required flag."
+    static let registrationFlags: UInt8 = 0x5d
+    // Stable identifier for the idbat Secure Enclave authenticator model.
+    // B43E6A34-F345-407F-9BA2-1AE73907FACA
+    static let aaguid = Data([
+        0xb4, 0x3e, 0x6a, 0x34, 0xf3, 0x45, 0x40, 0x7f,
+        0x9b, 0xa2, 0x1a, 0xe7, 0x39, 0x07, 0xfa, 0xca,
+    ])
+
+    static func assertionFlags(for metadata: CredentialMetadata?) -> UInt8 {
+        // Backup eligibility cannot change after registration. Keep each
+        // credential's original protocol flags, including the compatibility flags.
+        metadata?.backupEligible == false ? 0x05 : 0x1d
+    }
+
     static func register(_ request: ASPasskeyCredentialRequest, authenticationContext: LAContext) throws -> (ASPasskeyRegistrationCredential, ASPasskeyCredentialIdentity) {
         guard SecureEnclave.isAvailable else {
             throw PasskeyError.secureEnclaveUnavailable
@@ -60,9 +76,9 @@ enum Passkey {
         }
 
         var authData = Data(SHA256.hash(data: Data(rpID.utf8)))
-        authData.append(0x5d) // UP, UV, BE, BS, AT. Apple currently requires BE and BS.
+        authData.append(registrationFlags)
         authData.append(contentsOf: [0, 0, 0, 0]) // No signature counter.
-        authData.append(contentsOf: repeatElement(UInt8(0), count: 16)) // Privacy-preserving AAGUID.
+        authData.append(aaguid)
         authData.append(UInt8(credentialID.count >> 8))
         authData.append(UInt8(credentialID.count & 0xff))
         authData.append(credentialID)
@@ -86,7 +102,8 @@ enum Passkey {
                 relyingParty: rpID,
                 userName: requestedIdentity.userName,
                 userHandle: requestedIdentity.userHandle,
-                createdAt: Date()
+                createdAt: Date(),
+                backupEligible: registrationFlags & 0x08 != 0
             )
         )
 
@@ -110,10 +127,11 @@ enum Passkey {
         guard let identity = request.credentialIdentity as? ASPasskeyCredentialIdentity else {
             throw PasskeyError.invalidIdentity
         }
+        let key = try CredentialStore.load(credentialID: identity.credentialID)
         var authData = Data(SHA256.hash(data: Data(identity.relyingPartyIdentifier.utf8)))
-        authData.append(0x1d) // UP, UV, BE, BS.
+        authData.append(assertionFlags(for: key.metadata))
         authData.append(contentsOf: [0, 0, 0, 0])
-        let signature = try sign(authData + request.clientDataHash, credentialID: identity.credentialID, authenticationContext: authenticationContext)
+        let signature = try sign(authData + request.clientDataHash, keyRepresentation: key.representation, authenticationContext: authenticationContext)
         return ASPasskeyAssertionCredential(
             userHandle: identity.userHandle,
             relyingParty: identity.relyingPartyIdentifier,
@@ -124,13 +142,12 @@ enum Passkey {
         )
     }
 
-    private static func sign(_ data: Data, credentialID: Data, authenticationContext: LAContext) throws -> Data {
+    private static func sign(_ data: Data, keyRepresentation: Data, authenticationContext: LAContext) throws -> Data {
         guard SecureEnclave.isAvailable else {
             throw PasskeyError.secureEnclaveUnavailable
         }
-        let representation = try CredentialStore.load(credentialID: credentialID)
         let privateKey = try SecureEnclave.P256.Signing.PrivateKey(
-            dataRepresentation: representation,
+            dataRepresentation: keyRepresentation,
             authenticationContext: authenticationContext
         )
         return try privateKey.signature(for: data).derRepresentation

@@ -10,7 +10,7 @@ enum CredentialStoreTests {
         let unknownID = Data([7, 8, 9])
         let metadata = CredentialMetadata(
             relyingParty: "example.com", userName: "alice",
-            userHandle: Data([42]), createdAt: Date(timeIntervalSince1970: 1234)
+            userHandle: Data([42]), createdAt: Date(timeIntervalSince1970: 1234), backupEligible: nil
         )
         let encoded = try JSONEncoder().encode(metadata)
         let identity = metadata.identity(credentialID: keyID)
@@ -56,6 +56,35 @@ enum CredentialStoreTests {
         // even if a different credential for the same website still exists.
         precondition(CredentialStore.matchingPasskeys(in: combined, relyingParty: "example.com", allowedCredentials: [staleID]).isEmpty)
         precondition(CredentialStore.matchingPasskeys(in: combined, relyingParty: "example.com", allowedCredentials: [keyID]).count == 1)
+
+        // Isolate the AAGUID experiment while preserving the backup flags
+        // required by macOS. These flags do not describe our physical storage.
+        precondition(Passkey.registrationFlags == 0x5d)
+        precondition(Passkey.registrationFlags & 0x18 == 0x18)
+        precondition(Passkey.aaguid.count == 16)
+        precondition(Passkey.aaguid.map { String(format: "%02x", $0) }.joined() == "b43e6a34f345407f9ba21ae73907faca")
+        let deviceBound = CredentialMetadata(
+            relyingParty: metadata.relyingParty, userName: metadata.userName,
+            userHandle: metadata.userHandle, createdAt: metadata.createdAt,
+            backupEligible: false
+        )
+        let decodedDeviceBound = try JSONDecoder().decode(CredentialMetadata.self, from: JSONEncoder().encode(deviceBound))
+        precondition(Passkey.assertionFlags(for: decodedDeviceBound) == 0x05)
+        let newRegistration = CredentialMetadata(
+            relyingParty: metadata.relyingParty, userName: metadata.userName,
+            userHandle: metadata.userHandle, createdAt: metadata.createdAt,
+            backupEligible: Passkey.registrationFlags & 0x08 != 0
+        )
+        precondition(Passkey.registrationFlags & 0xbf == Passkey.assertionFlags(for: newRegistration))
+
+        // Older JSON does not contain the new field. Its assertion flags must
+        // still match what was sent when those credentials were registered.
+        let oldJSON = try JSONSerialization.jsonObject(with: encoded) as! [String: Any]
+        precondition(oldJSON["backupEligible"] == nil)
+        let decodedOld = try JSONDecoder().decode(CredentialMetadata.self, from: encoded)
+        precondition(decodedOld.backupEligible == nil)
+        precondition(Passkey.assertionFlags(for: decodedOld) == 0x1d)
+        precondition(Passkey.assertionFlags(for: nil) == 0x1d)
         print("Credential catalog checks passed")
     }
 }

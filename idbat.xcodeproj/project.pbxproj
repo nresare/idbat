@@ -13,6 +13,8 @@
 		A00000000000000000000004 /* IdbatProvider.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = B00000000000000000000008 /* IdbatProvider.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		A00000000000000000000005 /* CredentialStore.swift in App Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000010 /* CredentialStore.swift */; };
 		A00000000000000000000006 /* CredentialStore.swift in Extension Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000010 /* CredentialStore.swift */; };
+		A00000000000000000000007 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000011 /* Assets.xcassets */; };
+		A00000000000000000000008 /* Credits.rtf in Resources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000012 /* Credits.rtf */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -50,6 +52,8 @@
 		B00000000000000000000008 /* IdbatProvider.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = IdbatProvider.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		B00000000000000000000009 /* idbat.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = idbat.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B00000000000000000000010 /* CredentialStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CredentialStore.swift; sourceTree = "<group>"; };
+		B00000000000000000000011 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		B00000000000000000000012 /* Credits.rtf */ = {isa = PBXFileReference; lastKnownFileType = text.rtf; path = Credits.rtf; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -84,6 +88,8 @@
 			isa = PBXGroup;
 			children = (
 				B00000000000000000000001 /* IdbatApp.swift */,
+				B00000000000000000000011 /* Assets.xcassets */,
+				B00000000000000000000012 /* Credits.rtf */,
 				B00000000000000000000004 /* Info.plist */,
 				B00000000000000000000005 /* Idbat.entitlements */,
 			);
@@ -128,6 +134,7 @@
 				D00000000000000000000001 /* Sources */,
 				D00000000000000000000002 /* Frameworks */,
 				D00000000000000000000004 /* Embed App Extensions */,
+				D00000000000000000000007 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -191,6 +198,18 @@
 		};
 /* End PBXProject section */
 
+/* Begin PBXResourcesBuildPhase section */
+		D00000000000000000000007 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A00000000000000000000007 /* Assets.xcassets in Resources */,
+				A00000000000000000000008 /* Credits.rtf in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		D00000000000000000000001 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -245,6 +264,7 @@
 		I00000000000000000000003 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = App/Idbat.entitlements;
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
@@ -259,6 +279,7 @@
 		I00000000000000000000004 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = App/Idbat.entitlements;
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;

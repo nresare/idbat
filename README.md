@@ -1,6 +1,10 @@
 # idbat
 
-An experimental, open source macOS passkey credential provider written in Swift. Its first goal is to create a passkey from Safari and complete a sign-in with that passkey. It uses Apple's native `AuthenticationServices` credential provider extension, with no browser extension or server.
+idbat is an Open Source passkey credential provider for macOS.
+Unlike the passkey mechanism built into macOS the created passkeys are tied to the secure enclave on the local machine.
+
+This means that if the hardware is lost or broken, your passkeys will also be lost. Please do not depend on passkeys
+managed by idbat if you don't have a different way to restore access.
 
 ## Build and try it
 

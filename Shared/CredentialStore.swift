@@ -19,6 +19,8 @@ struct CredentialMetadata: Codable, Equatable {
     let userName: String
     let userHandle: Data
     let createdAt: Date
+    // Missing on older credentials, which registered with both backup flags set.
+    let backupEligible: Bool?
 
     func identity(credentialID: Data) -> ASPasskeyCredentialIdentity {
         ASPasskeyCredentialIdentity(
@@ -66,17 +68,25 @@ enum CredentialStore {
         guard status == errSecSuccess else { throw CredentialStoreError.keychain(status) }
     }
 
-    static func load(credentialID: Data) throws -> Data {
+    static func load(credentialID: Data) throws -> (representation: Data, metadata: CredentialMetadata?) {
         var query = baseQuery
         query[kSecAttrAccount as String] = credentialID.base64EncodedString()
         query[kSecReturnData as String] = true
+        query[kSecReturnAttributes as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
         var result: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
         if status == errSecItemNotFound { throw CredentialStoreError.missingKey }
         guard status == errSecSuccess else { throw CredentialStoreError.keychain(status) }
-        guard let data = result as? Data else { throw CredentialStoreError.missingKey }
-        return data
+        guard let attributes = result as? [String: Any],
+              let data = attributes[kSecValueData as String] as? Data else { throw CredentialStoreError.missingKey }
+        let metadata: CredentialMetadata?
+        if let encoded = attributes[kSecAttrGeneric as String] as? Data {
+            metadata = try JSONDecoder().decode(CredentialMetadata.self, from: encoded)
+        } else {
+            metadata = nil
+        }
+        return (data, metadata)
     }
 
     static func contains(credentialID: Data) throws -> Bool {
