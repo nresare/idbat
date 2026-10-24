@@ -11,6 +11,8 @@
 		A00000000000000000000002 /* CredentialProviderViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000002 /* CredentialProviderViewController.swift */; };
 		A00000000000000000000003 /* Passkey.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000003 /* Passkey.swift */; };
 		A00000000000000000000004 /* IdbatProvider.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = B00000000000000000000008 /* IdbatProvider.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		A00000000000000000000005 /* CredentialStore.swift in App Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000010 /* CredentialStore.swift */; };
+		A00000000000000000000006 /* CredentialStore.swift in Extension Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000010 /* CredentialStore.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -47,6 +49,7 @@
 		B00000000000000000000007 /* IdbatExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = IdbatExtension.entitlements; sourceTree = "<group>"; };
 		B00000000000000000000008 /* IdbatProvider.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = IdbatProvider.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		B00000000000000000000009 /* idbat.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = idbat.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B00000000000000000000010 /* CredentialStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CredentialStore.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -101,6 +104,7 @@
 			isa = PBXGroup;
 			children = (
 				B00000000000000000000003 /* Passkey.swift */,
+				B00000000000000000000010 /* CredentialStore.swift */,
 			);
 			path = Shared;
 			sourceTree = "<group>";
@@ -193,6 +197,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A00000000000000000000001 /* IdbatApp.swift in Sources */,
+				A00000000000000000000005 /* CredentialStore.swift in App Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -202,6 +207,7 @@
 			files = (
 				A00000000000000000000002 /* CredentialProviderViewController.swift in Sources */,
 				A00000000000000000000003 /* Passkey.swift in Sources */,
+				A00000000000000000000006 /* CredentialStore.swift in Extension Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

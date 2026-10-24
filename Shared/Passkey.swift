@@ -1,32 +1,34 @@
 import AuthenticationServices
 import CryptoKit
 import Foundation
+import LocalAuthentication
 import Security
 
 enum PasskeyError: LocalizedError {
     case unsupportedAlgorithm
     case invalidPublicKey
-    case keychain(OSStatus)
-    case missingKey
     case invalidIdentity
+    case secureEnclaveUnavailable
+    case accessControlCreationFailed
 
     var errorDescription: String? {
         switch self {
         case .unsupportedAlgorithm: "This site does not support ES256 passkeys."
         case .invalidPublicKey: "The generated public key has an unexpected format."
-        case .keychain(let status): "Keychain error: \(status)."
-        case .missingKey: "The passkey could not be found in the Keychain."
         case .invalidIdentity: "The system did not provide a passkey identity."
+        case .secureEnclaveUnavailable: "This Mac does not have an available Secure Enclave."
+        case .accessControlCreationFailed: "Could not configure Secure Enclave key protection."
         }
     }
 }
 
-/// The first prototype uses a software P-256 key in the local Keychain.
-/// It deliberately makes no claim that the key is Secure Enclave backed.
+/// New keys are generated and used inside the Secure Enclave. The Keychain
+/// stores an encrypted representation usable only by this device's enclave.
 enum Passkey {
-    private static let service = "is.idbat.passkeys"
-
-    static func register(_ request: ASPasskeyCredentialRequest) throws -> (ASPasskeyRegistrationCredential, ASPasskeyCredentialIdentity) {
+    static func register(_ request: ASPasskeyCredentialRequest, authenticationContext: LAContext) throws -> (ASPasskeyRegistrationCredential, ASPasskeyCredentialIdentity) {
+        guard SecureEnclave.isAvailable else {
+            throw PasskeyError.secureEnclaveUnavailable
+        }
         guard request.supportedAlgorithms.contains(where: { $0.rawValue == -7 }) else {
             throw PasskeyError.unsupportedAlgorithm
         }
@@ -36,7 +38,22 @@ enum Passkey {
         }
         let rpID = requestedIdentity.relyingPartyIdentifier
         let credentialID = Data((0..<32).map { _ in UInt8.random(in: 0...255) })
-        let privateKey = P256.Signing.PrivateKey()
+        var accessControlError: Unmanaged<CFError>?
+        guard let accessControl = SecAccessControlCreateWithFlags(
+            nil,
+            kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+            [.privateKeyUsage, .userPresence],
+            &accessControlError
+        ) else {
+            if let accessControlError {
+                throw accessControlError.takeRetainedValue() as Error
+            }
+            throw PasskeyError.accessControlCreationFailed
+        }
+        let privateKey = try SecureEnclave.P256.Signing.PrivateKey(
+            accessControl: accessControl,
+            authenticationContext: authenticationContext
+        )
         let publicKey = privateKey.publicKey.x963Representation
         guard publicKey.count == 65, publicKey.first == 0x04 else {
             throw PasskeyError.invalidPublicKey
@@ -62,7 +79,16 @@ enum Passkey {
             (CBOR.text("attStmt"), CBOR.map([])),
             (CBOR.text("authData"), CBOR.bytes(authData)),
         ])
-        try save(privateKey.rawRepresentation, credentialID: credentialID)
+        try CredentialStore.save(
+            privateKey.dataRepresentation,
+            credentialID: credentialID,
+            metadata: CredentialMetadata(
+                relyingParty: rpID,
+                userName: requestedIdentity.userName,
+                userHandle: requestedIdentity.userHandle,
+                createdAt: Date()
+            )
+        )
 
         let identity = ASPasskeyCredentialIdentity(
             relyingPartyIdentifier: rpID,
@@ -80,15 +106,14 @@ enum Passkey {
         return (credential, identity)
     }
 
-    static func assert(_ request: ASPasskeyCredentialRequest) throws -> ASPasskeyAssertionCredential {
+    static func assert(_ request: ASPasskeyCredentialRequest, authenticationContext: LAContext) throws -> ASPasskeyAssertionCredential {
         guard let identity = request.credentialIdentity as? ASPasskeyCredentialIdentity else {
             throw PasskeyError.invalidIdentity
         }
-        let privateKey = try P256.Signing.PrivateKey(rawRepresentation: load(credentialID: identity.credentialID))
         var authData = Data(SHA256.hash(data: Data(identity.relyingPartyIdentifier.utf8)))
         authData.append(0x1d) // UP, UV, BE, BS.
         authData.append(contentsOf: [0, 0, 0, 0])
-        let signature = try privateKey.signature(for: authData + request.clientDataHash).derRepresentation
+        let signature = try sign(authData + request.clientDataHash, credentialID: identity.credentialID, authenticationContext: authenticationContext)
         return ASPasskeyAssertionCredential(
             userHandle: identity.userHandle,
             relyingParty: identity.relyingPartyIdentifier,
@@ -99,46 +124,16 @@ enum Passkey {
         )
     }
 
-    private static func save(_ key: Data, credentialID: Data) throws {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: credentialID.base64EncodedString(),
-            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
-            kSecUseDataProtectionKeychain as String: true,
-            kSecValueData as String: key,
-        ]
-        let status = SecItemAdd(query as CFDictionary, nil)
-        guard status == errSecSuccess else { throw PasskeyError.keychain(status) }
-    }
-
-    private static func load(credentialID: Data) throws -> Data {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: credentialID.base64EncodedString(),
-            kSecUseDataProtectionKeychain as String: true,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-        ]
-        var result: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
-        guard status == errSecSuccess else {
-            if status == errSecItemNotFound { throw PasskeyError.missingKey }
-            throw PasskeyError.keychain(status)
+    private static func sign(_ data: Data, credentialID: Data, authenticationContext: LAContext) throws -> Data {
+        guard SecureEnclave.isAvailable else {
+            throw PasskeyError.secureEnclaveUnavailable
         }
-        guard let data = result as? Data else { throw PasskeyError.missingKey }
-        return data
-    }
-
-    static func delete(credentialID: Data) {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: credentialID.base64EncodedString(),
-            kSecUseDataProtectionKeychain as String: true,
-        ]
-        SecItemDelete(query as CFDictionary)
+        let representation = try CredentialStore.load(credentialID: credentialID)
+        let privateKey = try SecureEnclave.P256.Signing.PrivateKey(
+            dataRepresentation: representation,
+            authenticationContext: authenticationContext
+        )
+        return try privateKey.signature(for: data).derRepresentation
     }
 }
 

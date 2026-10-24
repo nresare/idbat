@@ -69,7 +69,7 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         let site = identity?.relyingPartyIdentifier ?? "this website"
         titleLabel.stringValue = registering ? "Create passkey for \(site)?" : "Sign in to \(site)?"
         detailLabel.stringValue = registering
-            ? "This prototype saves a software key in the local Keychain. Account: \(identity?.userName ?? "unknown")"
+            ? "This prototype creates a key protected by this Mac's Secure Enclave. Account: \(identity?.userName ?? "unknown")"
             : "Confirm with Touch ID or your Mac password."
         actionButton.title = registering ? "Create passkey" : "Sign in"
         actionButton.isEnabled = true
@@ -97,22 +97,27 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
                     return
                 }
                 if self.registering {
-                    self.registerPasskey(request)
+                    self.registerPasskey(request, authenticationContext: context)
                 } else {
-                    self.assertPasskey(request)
+                    self.assertPasskey(request, authenticationContext: context)
                 }
             }
         }
     }
 
-    private func registerPasskey(_ request: ASPasskeyCredentialRequest) {
+    private func registerPasskey(_ request: ASPasskeyCredentialRequest, authenticationContext: LAContext) {
         do {
-            let (credential, identity) = try Passkey.register(request)
+            let (credential, identity) = try Passkey.register(request, authenticationContext: authenticationContext)
             ASCredentialIdentityStore.shared.saveCredentialIdentities([identity]) { [weak self] saved, error in
                 DispatchQueue.main.async {
                     guard let self else { return }
                     guard saved else {
-                        Passkey.delete(credentialID: identity.credentialID)
+                        do {
+                            try CredentialStore.deleteKey(credentialID: identity.credentialID)
+                        } catch {
+                            self.fail("Could not save the passkey identity or remove its key: \(error.localizedDescription)")
+                            return
+                        }
                         self.fail(error?.localizedDescription ?? "Could not save the passkey identity")
                         return
                     }
@@ -124,9 +129,9 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         }
     }
 
-    private func assertPasskey(_ request: ASPasskeyCredentialRequest) {
+    private func assertPasskey(_ request: ASPasskeyCredentialRequest, authenticationContext: LAContext) {
         do {
-            let credential = try Passkey.assert(request)
+            let credential = try Passkey.assert(request, authenticationContext: authenticationContext)
             extensionContext.completeAssertionRequest(using: credential, completionHandler: nil)
         } catch {
             fail(error.localizedDescription)
