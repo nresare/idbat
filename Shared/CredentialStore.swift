@@ -79,6 +79,23 @@ enum CredentialStore {
         return data
     }
 
+    static func contains(credentialID: Data) throws -> Bool {
+        var query = baseQuery
+        query[kSecAttrAccount as String] = credentialID.base64EncodedString()
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
+        let status = SecItemCopyMatching(query as CFDictionary, nil)
+        if status == errSecItemNotFound { return false }
+        guard status == errSecSuccess else { throw CredentialStoreError.keychain(status) }
+        return true
+    }
+
+    static func matchingPasskeys(in credentials: [StoredCredential], relyingParty: String, allowedCredentials: [Data]) -> [StoredCredential] {
+        credentials.filter {
+            $0.hasKey && $0.identity != nil && $0.relyingParty == relyingParty
+                && (allowedCredentials.isEmpty || allowedCredentials.contains($0.credentialID))
+        }
+    }
+
     static func deleteKey(credentialID: Data) throws {
         var query = baseQuery
         query[kSecAttrAccount as String] = credentialID.base64EncodedString()

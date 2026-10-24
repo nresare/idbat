@@ -46,6 +46,16 @@ enum CredentialStoreTests {
         precondition(unknown.relyingParty == "Unknown website")
         precondition(Set(combined.map(\.id)).count == combined.count)
         precondition(CredentialStore.merge(attributes: [], identities: []).isEmpty)
+
+        // Website requests must never match another RP or an unavailable key.
+        let matches = CredentialStore.matchingPasskeys(in: combined, relyingParty: "example.com", allowedCredentials: [])
+        precondition(matches.map(\.credentialID) == [keyID])
+        precondition(CredentialStore.matchingPasskeys(in: combined, relyingParty: "other.example.com", allowedCredentials: []).isEmpty)
+
+        // An explicit allow-list containing a deleted key must report no match,
+        // even if a different credential for the same website still exists.
+        precondition(CredentialStore.matchingPasskeys(in: combined, relyingParty: "example.com", allowedCredentials: [staleID]).isEmpty)
+        precondition(CredentialStore.matchingPasskeys(in: combined, relyingParty: "example.com", allowedCredentials: [keyID]).count == 1)
         print("Credential catalog checks passed")
     }
 }

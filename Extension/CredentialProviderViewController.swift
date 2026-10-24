@@ -6,9 +6,12 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
     private var request: ASPasskeyCredentialRequest?
     private var registering = false
     private var shouldAuthenticateOnAppearance = false
+    private var displayedFailure: NSError?
+    private var credentialChoices: [ASPasskeyCredentialRequest] = []
     private let titleLabel = NSTextField(labelWithString: "")
     private let detailLabel = NSTextField(wrappingLabelWithString: "")
     private let actionButton = NSButton(title: "", target: nil, action: nil)
+    private let accountPicker = NSPopUpButton(frame: .zero, pullsDown: false)
 
     override func loadView() {
         view = NSView(frame: NSRect(x: 0, y: 0, width: 420, height: 220))
@@ -20,7 +23,8 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         actionButton.action = #selector(approve)
         actionButton.bezelStyle = .rounded
 
-        let stack = NSStackView(views: [titleLabel, detailLabel, actionButton])
+        accountPicker.isHidden = true
+        let stack = NSStackView(views: [titleLabel, detailLabel, accountPicker, actionButton])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 14
@@ -51,7 +55,80 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
             fail("Unexpected sign-in request")
             return
         }
-        show(request, registering: false)
+        guard let identity = request.credentialIdentity as? ASPasskeyCredentialIdentity else {
+            fail("The system did not provide a passkey identity.")
+            return
+        }
+        do {
+            guard try CredentialStore.contains(credentialID: identity.credentialID) else {
+                showMissingKey(for: identity.relyingPartyIdentifier)
+                return
+            }
+            show(request, registering: false)
+        } catch {
+            fail(error.localizedDescription)
+        }
+    }
+
+    override func prepareCredentialList(for serviceIdentifiers: [ASCredentialServiceIdentifier]) {
+        showFailure(
+            title: "No password credentials",
+            message: "idbat provides passkeys only. Choose passkey sign-in on the website.",
+            code: .credentialIdentityNotFound
+        )
+    }
+
+    override func prepareCredentialList(for serviceIdentifiers: [ASCredentialServiceIdentifier], requestParameters: ASPasskeyCredentialRequestParameters) {
+        loadViewIfNeeded()
+        request = nil
+        shouldAuthenticateOnAppearance = false
+        displayedFailure = nil
+        credentialChoices = []
+        accountPicker.isHidden = true
+        titleLabel.stringValue = "Finding passkeys…"
+        detailLabel.stringValue = requestParameters.relyingPartyIdentifier
+        actionButton.isEnabled = false
+
+        Task { @MainActor [weak self] in
+            do {
+                let credentials = try await CredentialStore.list()
+                guard let self else { return }
+                let matches = CredentialStore.matchingPasskeys(
+                    in: credentials,
+                    relyingParty: requestParameters.relyingPartyIdentifier,
+                    allowedCredentials: requestParameters.allowedCredentials
+                )
+                let choices = matches.compactMap { credential -> ASPasskeyCredentialRequest? in
+                    guard let identity = credential.identity else { return nil }
+                    return ASPasskeyCredentialRequest(
+                        credentialIdentity: identity,
+                        clientDataHash: requestParameters.clientDataHash,
+                        userVerificationPreference: requestParameters.userVerificationPreference,
+                        supportedAlgorithms: [ASCOSEAlgorithmIdentifier]()
+                    )
+                }
+                if choices.count == 1, let choice = choices.first {
+                    self.prepareInterfaceToProvideCredential(for: choice)
+                } else if choices.isEmpty {
+                    self.showMissingKey(for: requestParameters.relyingPartyIdentifier)
+                } else {
+                    self.credentialChoices = choices
+                    self.registering = false
+                    self.titleLabel.stringValue = "Choose a passkey"
+                    self.detailLabel.stringValue = "Sign in to \(requestParameters.relyingPartyIdentifier)."
+                    self.accountPicker.removeAllItems()
+                    self.accountPicker.addItems(withTitles: matches.map {
+                        "\($0.userName) (\($0.id.prefix(8)))"
+                    })
+                    self.accountPicker.isHidden = false
+                    self.actionButton.title = "Sign in"
+                    self.actionButton.action = #selector(self.approve)
+                    self.actionButton.isEnabled = true
+                }
+            } catch {
+                self?.fail(error.localizedDescription)
+            }
+        }
     }
 
     override func provideCredentialWithoutUserInteraction(for credentialRequest: any ASCredentialRequest) {
@@ -65,6 +142,9 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         loadViewIfNeeded()
         self.request = request
         self.registering = registering
+        displayedFailure = nil
+        credentialChoices = []
+        accountPicker.isHidden = true
         let identity = request.credentialIdentity as? ASPasskeyCredentialIdentity
         let site = identity?.relyingPartyIdentifier ?? "this website"
         titleLabel.stringValue = registering ? "Create passkey for \(site)?" : "Sign in to \(site)?"
@@ -73,6 +153,7 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
             : "Confirm with Touch ID or your Mac password."
         actionButton.title = registering ? "Create passkey" : "Sign in"
         actionButton.isEnabled = true
+        actionButton.action = #selector(approve)
         shouldAuthenticateOnAppearance = !registering
         if view.window != nil {
             authenticateIfReady()
@@ -86,6 +167,11 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
     }
 
     @objc private func approve() {
+        if !credentialChoices.isEmpty {
+            let index = accountPicker.indexOfSelectedItem
+            guard credentialChoices.indices.contains(index) else { return }
+            request = credentialChoices[index]
+        }
         guard let request, actionButton.isEnabled else { return }
         actionButton.isEnabled = false
         let context = LAContext()
@@ -93,7 +179,16 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
             DispatchQueue.main.async {
                 guard let self else { return }
                 guard success else {
-                    self.fail(error?.localizedDescription ?? "Authentication was cancelled")
+                    if let authenticationError = error as? LAError,
+                       [.userCancel, .appCancel, .systemCancel].contains(authenticationError.code) {
+                        self.extensionContext.cancelRequest(withError: NSError(
+                            domain: ASExtensionErrorDomain,
+                            code: ASExtensionError.Code.userCanceled.rawValue,
+                            userInfo: [NSLocalizedDescriptionKey: authenticationError.localizedDescription]
+                        ))
+                    } else {
+                        self.fail(error?.localizedDescription ?? "Authentication failed")
+                    }
                     return
                 }
                 if self.registering {
@@ -133,16 +228,47 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         do {
             let credential = try Passkey.assert(request, authenticationContext: authenticationContext)
             extensionContext.completeAssertionRequest(using: credential, completionHandler: nil)
+        } catch CredentialStoreError.missingKey {
+            let identity = request.credentialIdentity as? ASPasskeyCredentialIdentity
+            showMissingKey(for: identity?.relyingPartyIdentifier ?? "this website")
         } catch {
             fail(error.localizedDescription)
         }
     }
 
     private func fail(_ reason: String) {
-        extensionContext.cancelRequest(withError: NSError(
+        showFailure(title: "Could not complete request", message: reason, code: .failed)
+    }
+
+    private func showMissingKey(for site: String) {
+        showFailure(
+            title: "Passkey not found",
+            message: "No matching passkey for \(site) is stored in idbat on this Mac. It may have been deleted. Use another sign-in method, then register a new passkey.",
+            code: .credentialIdentityNotFound
+        )
+    }
+
+    private func showFailure(title: String, message: String, code: ASExtensionError.Code) {
+        loadViewIfNeeded()
+        request = nil
+        shouldAuthenticateOnAppearance = false
+        credentialChoices = []
+        accountPicker.isHidden = true
+        displayedFailure = NSError(
             domain: ASExtensionErrorDomain,
-            code: 0,
-            userInfo: [NSLocalizedDescriptionKey: reason]
-        ))
+            code: code.rawValue,
+            userInfo: [NSLocalizedDescriptionKey: message]
+        )
+        titleLabel.stringValue = title
+        detailLabel.stringValue = message
+        actionButton.title = "Close"
+        actionButton.action = #selector(closeFailure)
+        actionButton.isEnabled = true
+    }
+
+    @objc private func closeFailure() {
+        guard let displayedFailure else { return }
+        actionButton.isEnabled = false
+        extensionContext.cancelRequest(withError: displayedFailure)
     }
 }

@@ -27,6 +27,7 @@ xcodebuild -project idbat.xcodeproj -scheme idbat \
 - Credentials use `none` attestation and a zero signature counter.
 - The provider saves credential metadata in `ASCredentialIdentityStore` so Safari can find the passkey again.
 - The app and extension share a Keychain access group. Website, account, user handle, and creation date are saved as attributes alongside each encrypted key representation. Listing credentials reads attributes only. AutoFill entries with missing keys are also shown so they can be removed. Existing keys without saved metadata use AutoFill names when available on macOS 14.4 or later; otherwise they appear with an unknown website/account.
+- When a sign-in request reaches idbat without a matching local key, the provider shows **Passkey not found**. Closing that message returns a credential-not-found error to macOS. If Safari does not invoke idbat, the browser and website control the failure indication.
 
 ## Important prototype limitations
 
