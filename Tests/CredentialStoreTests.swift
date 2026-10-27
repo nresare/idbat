@@ -101,6 +101,14 @@ enum CredentialStoreTests {
             identities: []
         )
         precondition(spoofedRecord[0].userName == "evebank.example")
+
+        // A key must only sign for the website it was registered for.
+        try Passkey.checkRelyingParty("example.com", for: metadata)
+        try Passkey.checkRelyingParty("other.example.com", for: nil)
+        do {
+            try Passkey.checkRelyingParty("other.example.com", for: metadata)
+            preconditionFailure("Signed for the wrong relying party")
+        } catch PasskeyError.relyingPartyMismatch {}
         print("Credential catalog checks passed")
     }
 }
