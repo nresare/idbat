@@ -177,8 +177,12 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         }
         guard let request, actionButton.isEnabled else { return }
         actionButton.isEnabled = false
+        // Sign-in starts on its own, so the system prompt is often all the user
+        // reads. Name the website there.
+        let site = (request.credentialIdentity as? ASPasskeyCredentialIdentity)?.relyingPartyIdentifier ?? "this website"
+        let reason = registering ? "create a passkey for \(site)" : "sign in to \(site)"
         let context = LAContext()
-        context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: registering ? "Create a passkey" : "Use a passkey") { [weak self] success, error in
+        context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason) { [weak self] success, error in
             DispatchQueue.main.async {
                 guard let self else { return }
                 guard success else {
