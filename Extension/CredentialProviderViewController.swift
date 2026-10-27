@@ -151,7 +151,7 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         let site = identity?.relyingPartyIdentifier ?? "this website"
         titleLabel.stringValue = registering ? "Create passkey for \(site)" : "Sign in to \(site)"
         detailLabel.stringValue = registering
-            ? "Account: \(identity?.userName ?? "unknown")\nConfirm with Touch ID or your Mac password."
+            ? "Account: \(identity.map { displayName($0.userName) } ?? "unknown")\nConfirm with Touch ID or your Mac password."
             : "Confirm with Touch ID or your Mac password."
         actionButton.title = registering ? "Create passkey" : "Sign in"
         actionButton.isEnabled = true

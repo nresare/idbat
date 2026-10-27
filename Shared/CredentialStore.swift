@@ -41,7 +41,16 @@ struct StoredCredential: Identifiable {
 
     var id: String { credentialID.base64EncodedString() }
     var relyingParty: String { metadata?.relyingParty ?? identity?.relyingPartyIdentifier ?? "Unknown website" }
-    var userName: String { metadata?.userName ?? identity?.userName ?? "Unknown account" }
+    var userName: String { displayName(metadata?.userName ?? identity?.userName ?? "Unknown account") }
+}
+
+/// Account names come from websites. Remove control, formatting and line
+/// break characters and cap the length so a name cannot rearrange the text
+/// it is shown in.
+func displayName(_ userName: String) -> String {
+    let hidden = CharacterSet.controlCharacters.union(.newlines)
+    let cleaned = String(String.UnicodeScalarView(userName.unicodeScalars.filter { !hidden.contains($0) }))
+    return cleaned.count > 64 ? cleaned.prefix(63) + "…" : cleaned
 }
 
 /// Both targets use the provider's Keychain access group. Listing requests only
@@ -62,7 +71,7 @@ enum CredentialStore {
         query[kSecAttrAccount as String] = credentialID.base64EncodedString()
         query[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
         query[kSecAttrGeneric as String] = try JSONEncoder().encode(metadata)
-        query[kSecAttrLabel as String] = "\(metadata.relyingParty) — \(metadata.userName)"
+        query[kSecAttrLabel as String] = "\(metadata.relyingParty) — \(displayName(metadata.userName))"
         query[kSecValueData as String] = representation
         let status = SecItemAdd(query as CFDictionary, nil)
         guard status == errSecSuccess else { throw CredentialStoreError.keychain(status) }

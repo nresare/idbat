@@ -85,6 +85,22 @@ enum CredentialStoreTests {
         precondition(decodedOld.backupEligible == nil)
         precondition(Passkey.assertionFlags(for: decodedOld) == 0x1d)
         precondition(Passkey.assertionFlags(for: nil) == 0x1d)
+
+        // Website-supplied account names cannot add lines or reorder text.
+        precondition(displayName("alice") == "alice")
+        precondition(displayName("alice\n\nVerified by your bank") == "aliceVerified by your bank")
+        precondition(displayName("a\u{202E}b\u{2028}c\u{0}") == "abc")
+        let long = displayName(String(repeating: "x", count: 100))
+        precondition(long.count == 64 && long.hasSuffix("…"))
+        let spoofed = CredentialMetadata(
+            relyingParty: "example.com", userName: "eve\nbank.example",
+            userHandle: Data([1]), createdAt: Date(), backupEligible: false
+        )
+        let spoofedRecord = CredentialStore.merge(
+            attributes: [[kSecAttrAccount as String: unknownID.base64EncodedString(), kSecAttrGeneric as String: try JSONEncoder().encode(spoofed)]],
+            identities: []
+        )
+        precondition(spoofedRecord[0].userName == "evebank.example")
         print("Credential catalog checks passed")
     }
 }
