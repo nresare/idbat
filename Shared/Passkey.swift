@@ -10,6 +10,7 @@ enum PasskeyError: LocalizedError {
     case invalidIdentity
     case secureEnclaveUnavailable
     case accessControlCreationFailed
+    case relyingPartyMismatch
 
     var errorDescription: String? {
         switch self {
@@ -18,6 +19,7 @@ enum PasskeyError: LocalizedError {
         case .invalidIdentity: "The system did not provide a passkey identity."
         case .secureEnclaveUnavailable: "This Mac does not have an available Secure Enclave."
         case .accessControlCreationFailed: "Could not configure Secure Enclave key protection."
+        case .relyingPartyMismatch: "This passkey belongs to a different website."
         }
     }
 }
@@ -128,6 +130,7 @@ enum Passkey {
             throw PasskeyError.invalidIdentity
         }
         let key = try CredentialStore.load(credentialID: identity.credentialID)
+        try checkRelyingParty(identity.relyingPartyIdentifier, for: key.metadata)
         var authData = Data(SHA256.hash(data: Data(identity.relyingPartyIdentifier.utf8)))
         authData.append(assertionFlags(for: key.metadata))
         authData.append(contentsOf: [0, 0, 0, 0])
@@ -140,6 +143,15 @@ enum Passkey {
             authenticatorData: authData,
             credentialID: identity.credentialID
         )
+    }
+
+    /// Never sign for a website other than the one the key was registered for,
+    /// whatever identity the request carries. Older keys without metadata
+    /// cannot be checked.
+    static func checkRelyingParty(_ relyingParty: String, for metadata: CredentialMetadata?) throws {
+        if let metadata, metadata.relyingParty != relyingParty {
+            throw PasskeyError.relyingPartyMismatch
+        }
     }
 
     private static func sign(_ data: Data, keyRepresentation: Data, authenticationContext: LAContext) throws -> Data {
